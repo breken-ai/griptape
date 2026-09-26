@@ -345,3 +345,32 @@ class TestGooglePromptDriver:
         assert events[0].content is None
         assert isinstance(events[1].content, TextDeltaMessageContent)
         assert events[1].content.text == "model-output"
+
+    @pytest.mark.parametrize("calls_per_chunk", [2, 1])
+    def test_stream_run_with_parallel_function_calls(self, mocker, calls_per_chunk):
+        """Gemini can answer with several function calls; every one of them must become an action."""
+        from google.genai.types import GenerateContentResponse
+
+        mock_client = mocker.patch("google.genai.Client")
+        calls = [
+            {"function_call": {"name": "MockTool_test", "args": {"test": "a"}}},
+            {"function_call": {"name": "MockTool_test", "args": {"test": "b"}}},
+        ]
+        chunks = [
+            GenerateContentResponse.model_validate(
+                {
+                    "candidates": [{"content": {"role": "model", "parts": calls[i : i + calls_per_chunk]}}],
+                    "usage_metadata": {"prompt_token_count": 5, "candidates_token_count": 7},
+                }
+            )
+            for i in range(0, len(calls), calls_per_chunk)
+        ]
+        mock_client.return_value.models.generate_content_stream.return_value = iter(chunks)
+        driver = GooglePromptDriver(model="gemini-2.5-flash", api_key="api-key", stream=True, use_native_tools=True)
+
+        message = driver.run(PromptStack())
+
+        actions = [content.artifact.value for content in message.content]
+        assert [action.input for action in actions] == [{"test": "a"}, {"test": "b"}]
+        assert message.usage.input_tokens == 5
+        assert message.usage.output_tokens == 7

@@ -129,6 +129,7 @@ class GooglePromptDriver(BasePromptDriver):
         )
 
         prompt_token_count = None
+        tool_index = 0
         for chunk in response:
             logger.debug(chunk.model_dump())
             usage_metadata = chunk.usage_metadata
@@ -136,10 +137,19 @@ class GooglePromptDriver(BasePromptDriver):
             parts = chunk.candidates[0].content.parts if chunk.candidates and chunk.candidates[0].content else None
             # Gemini thinking models emit reasoning-only chunks (e.g. a bare `thought_signature`)
             # with no text or function_call; skip them since Griptape has no thought content type.
-            non_thought_part = (
-                next((part for part in parts if not self.__is_thought_part(part)), None) if parts else None
-            )
-            content = self.__to_prompt_stack_delta_message_content(non_thought_part) if non_thought_part else None
+            non_thought_parts = [part for part in (parts or []) if not self.__is_thought_part(part)]
+            # A chunk can hold several parts, e.g. one function_call part per parallel call.
+            contents = [
+                self.__to_prompt_stack_delta_message_content(part)
+                for i, part in enumerate(non_thought_parts)
+                if i == 0 or part.text or part.function_call
+            ]
+            # Gemini's function calls carry no index, so number them to keep each call's deltas apart.
+            for delta_content in contents:
+                if isinstance(delta_content, ActionCallDeltaMessageContent):
+                    delta_content.index = tool_index
+                    tool_index += 1
+            content = contents[0] if contents else None
 
             # Only want to output the prompt token count once since it is static each chunk
             if prompt_token_count is None and usage_metadata is not None:
@@ -158,6 +168,8 @@ class GooglePromptDriver(BasePromptDriver):
                         output_tokens=usage_metadata.candidates_token_count if usage_metadata else None,
                     ),
                 )
+            for extra_content in contents[1:]:
+                yield DeltaMessage(content=extra_content)
 
     def _base_params(self, prompt_stack: PromptStack) -> dict:
         types = import_optional_dependency("google.genai.types")
