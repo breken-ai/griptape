@@ -12,6 +12,42 @@ from griptape.drivers.prompt.cohere import CoherePromptDriver
 from tests.mocks.mock_tool.tool import MockTool
 
 
+def stream_event(payload: dict):
+    """Build a chat_stream event the way the cohere SDK parses it off the wire."""
+    from cohere.core.unchecked_base_model import construct_type
+    from cohere.types import StreamedChatResponseV2
+
+    return construct_type(type_=StreamedChatResponseV2, object_=payload)
+
+
+def tool_call_events(index: int, call_id: str, arguments: str) -> list:
+    return [
+        stream_event(
+            {
+                "type": "tool-call-start",
+                "index": index,
+                "delta": {
+                    "message": {
+                        "tool_calls": {
+                            "id": call_id,
+                            "type": "function",
+                            "function": {"name": "MockTool_test", "arguments": ""},
+                        }
+                    }
+                },
+            }
+        ),
+        stream_event(
+            {
+                "type": "tool-call-delta",
+                "index": index,
+                "delta": {"message": {"tool_calls": {"function": {"arguments": arguments}}}},
+            }
+        ),
+        stream_event({"type": "tool-call-end", "index": index}),
+    ]
+
+
 class TestCoherePromptDriver:
     COHERE_STRUCTURED_OUTPUT_SCHEMA = {
         "$id": "Output Format",
@@ -170,32 +206,32 @@ class TestCoherePromptDriver:
     def mock_stream_client(self, mocker):
         mock_client = mocker.patch("cohere.ClientV2").return_value
 
-        mock_tool_call_delta_header = Mock(
-            message={
-                "tool_calls": {
-                    "id": "mock-id",
-                    "function": {
-                        "name": "MockTool_test",
-                    },
-                }
-            },
-        )
-
-        mock_tool_call_delta_body = Mock(
-            message={
-                "tool_calls": {
-                    "function": {
-                        "arguments": '{"foo": "bar"}',
-                    },
-                }
-            },
-        )
         mock_client.chat_stream.return_value = iter(
             [
                 Mock(type="content-delta", delta=Mock(message=Mock(content=Mock(text="model-output")))),
-                Mock(type="tool-plan-delta", delta=Mock(message={"tool_plan": "tool-plan"})),
-                Mock(type="tool-call-start", delta=mock_tool_call_delta_header),
-                Mock(type="tool-call-delta", delta=mock_tool_call_delta_body),
+                stream_event({"type": "tool-plan-delta", "delta": {"message": {"tool_plan": "tool-plan"}}}),
+                stream_event(
+                    {
+                        "type": "tool-call-start",
+                        "index": 0,
+                        "delta": {
+                            "message": {
+                                "tool_calls": {
+                                    "id": "mock-id",
+                                    "type": "function",
+                                    "function": {"name": "MockTool_test", "arguments": ""},
+                                }
+                            }
+                        },
+                    }
+                ),
+                stream_event(
+                    {
+                        "type": "tool-call-delta",
+                        "index": 0,
+                        "delta": {"message": {"tool_calls": {"function": {"arguments": '{"foo": "bar"}'}}}},
+                    }
+                ),
                 Mock(type="stream-end", response=Mock(meta=Mock(tokens=Mock(input_tokens=5, output_tokens=10)))),
             ]
         )
@@ -390,6 +426,28 @@ class TestCoherePromptDriver:
         event = next(stream)
         assert event.usage.input_tokens == 5
         assert event.usage.output_tokens == 10
+
+    def test_stream_run_with_parallel_tool_calls(self, mocker, prompt_stack):
+        mock_client = mocker.patch("cohere.ClientV2").return_value
+        mock_client.chat_stream.return_value = iter(
+            [
+                stream_event({"type": "tool-plan-delta", "delta": {"message": {"tool_plan": "Call the tool twice."}}}),
+                *tool_call_events(0, "call-a", '{"foo": "a"}'),
+                *tool_call_events(1, "call-b", '{"foo": "b"}'),
+            ]
+        )
+        driver = CoherePromptDriver(model="command", api_key="api-key", stream=True, use_native_tools=True)
+
+        message = driver.run(prompt_stack)
+
+        actions = [
+            content.artifact.value for content in message.content if isinstance(content.artifact, ActionArtifact)
+        ]
+        assert [(action.tag, action.input) for action in actions] == [
+            ("call-a", {"foo": "a"}),
+            ("call-b", {"foo": "b"}),
+        ]
+        assert message.to_text() == "Call the tool twice."
 
     def test_to_dict(self):
         # Given

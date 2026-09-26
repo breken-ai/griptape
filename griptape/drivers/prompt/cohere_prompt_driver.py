@@ -241,14 +241,14 @@ class CoherePromptDriver(BasePromptDriver):
         if event.type == "content-delta":
             return TextDeltaMessageContent(event.delta.message.content.text, index=0)
         if event.type == "tool-plan-delta":
-            return TextDeltaMessageContent(event.delta.message["tool_plan"])
+            return TextDeltaMessageContent(event.delta.message.tool_plan)
         if event.type == "tool-call-start":
-            tool_call_delta = event.delta.message["tool_calls"]
-            name, path = ToolAction.from_native_tool_name(tool_call_delta["function"]["name"])
+            tool_call_delta = event.delta.message.tool_calls
+            name, path = ToolAction.from_native_tool_name(tool_call_delta.function.name)
 
-            return ActionCallDeltaMessageContent(tag=tool_call_delta["id"], name=name, path=path)
+            return ActionCallDeltaMessageContent(index=event.index, tag=tool_call_delta.id, name=name, path=path)
         if event.type == "tool-call-delta":
-            tool_call_delta = event.delta.message["tool_calls"]["function"]
+            tool_call_delta = event.delta.message.tool_calls.function
 
-            return ActionCallDeltaMessageContent(partial_input=tool_call_delta["arguments"])
+            return ActionCallDeltaMessageContent(index=event.index, partial_input=tool_call_delta.arguments)
         raise ValueError(f"Unsupported event type: {event.type}")
