@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import re
 import threading
@@ -250,18 +251,21 @@ class MCPTool(BaseTool):
             elif isinstance(content, types.ImageContent):
                 response_artifacts.append(
                     ImageArtifact(
-                        value=content.data, format=content.mime_type.removeprefix("image/"), width=0, height=0
+                        value=base64.b64decode(content.data),
+                        format=content.mime_type.removeprefix("image/"),
+                        width=0,
+                        height=0,
                     )
                 )
             elif isinstance(content, types.AudioContent):
                 response_artifacts.append(
-                    AudioArtifact(value=content.data, format=content.mime_type.removeprefix("audio/"))
+                    AudioArtifact(value=base64.b64decode(content.data), format=content.mime_type.removeprefix("audio/"))
                 )
             elif isinstance(content, types.EmbeddedResource):
                 if isinstance(content.resource, types.TextResourceContents):
                     response_artifacts.append(TextArtifact(content.resource.text))
                 elif isinstance(content.resource, types.BlobResourceContents):
-                    response_artifacts.append(BlobArtifact(value=content.resource.blob))
+                    response_artifacts.append(BlobArtifact(value=base64.b64decode(content.resource.blob)))
 
         if not response_artifacts and call_tool_result.structured_content is not None:
             response_artifacts.append(TextArtifact(json.dumps(call_tool_result.structured_content)))

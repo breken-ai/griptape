@@ -14,7 +14,7 @@ from mcp.server.lowlevel import Server
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.shared.memory import create_client_server_memory_streams
 
-from griptape.artifacts import AudioArtifact, ErrorArtifact, ImageArtifact, ListArtifact, TextArtifact
+from griptape.artifacts import AudioArtifact, BlobArtifact, ErrorArtifact, ImageArtifact, ListArtifact, TextArtifact
 from griptape.tools.mcp.sessions import create_session
 from griptape.tools.mcp.tool import MCPTool
 
@@ -128,6 +128,24 @@ class TestMCPTool:
 
         assert isinstance(artifact.value[0], artifact_type)
         assert artifact.value[0].format == expected_format
+
+    @pytest.mark.parametrize(
+        ("content", "artifact_type"),
+        [
+            ({"type": "image", "data": "aGk=", "mimeType": "image/png"}, ImageArtifact),
+            ({"type": "audio", "data": "aGk=", "mimeType": "audio/wav"}, AudioArtifact),
+            (
+                {"type": "resource", "resource": {"uri": "file:///hi.bin", "blob": "aGk="}},
+                BlobArtifact,
+            ),
+        ],
+    )
+    def test_binary_content_is_base64_decoded(self, tool, content, artifact_type):
+        """MCP sends image, audio and blob data base64-encoded; the artifact holds the raw bytes."""
+        artifact = tool._convert_call_tool_result_to_artifact(call_tool_result(content=[content]))
+
+        assert isinstance(artifact.value[0], artifact_type)
+        assert artifact.value[0].value == b"hi"
 
 
 SERVER_TOOLS = [
