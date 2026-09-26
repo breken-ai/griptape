@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from textwrap import dedent
-from urllib.parse import urljoin
 
 import schema
 from attrs import define, field
@@ -211,12 +210,13 @@ class RestApiTool(BaseTool):
             return ErrorArtifact(str(err))
 
     def _build_url(self, base_url: str, path: str | None = None, path_params: list | None = None) -> str:
-        url = ""
+        # Append rather than urljoin: urljoin replaces the base URL's last path segment (e.g. /v1).
+        url = base_url.rstrip("/")
 
         if path:
-            url += path.strip("/")
+            url += f"/{path.strip('/')}"
 
         if path_params:
             url += f"/{str.join('/', map(str, path_params))}"
 
-        return urljoin(base_url.strip("/"), url)
+        return url

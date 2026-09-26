@@ -54,3 +54,11 @@ class TestRestApi:
         url = client._build_url("https://foo.bar", path_params=["fizz", "buzz", 1, 2, 3])
 
         assert url == "https://foo.bar/fizz/buzz/1/2/3"
+
+    def test_build_url_keeps_the_base_url_path(self, client):
+        assert client._build_url("https://api.foo.bar/v1") == "https://api.foo.bar/v1"
+        assert client._build_url("https://api.foo.bar/v1", path="users") == "https://api.foo.bar/v1/users"
+        assert client._build_url("https://api.foo.bar/v1/", path="/users/", path_params=[7]) == (
+            "https://api.foo.bar/v1/users/7"
+        )
+        assert client._build_url("https://api.foo.bar/v1", path_params=["fizz", 1]) == "https://api.foo.bar/v1/fizz/1"
