@@ -54,3 +54,21 @@ class TestRestApi:
         url = client._build_url("https://foo.bar", path_params=["fizz", "buzz", 1, 2, 3])
 
         assert url == "https://foo.bar/fizz/buzz/1/2/3"
+
+    def test_activity_descriptions_include_param_schemas(self):
+        from griptape.tools import RestApiTool
+
+        tool = RestApiTool(
+            base_url="https://foo.bar",
+            description="Foo API.",
+            request_path_params_schema="PATH-SCHEMA",
+            request_query_params_schema="QUERY-SCHEMA",
+        )
+
+        for activity in (tool.get, tool.delete):
+            description = tool.activity_description(activity)
+            assert "The request path parameters must follow this JSON schema: PATH-SCHEMA" in description
+            assert "The request query parameters must follow this JSON schema: QUERY-SCHEMA" in description
+        assert "The request path parameters must follow this JSON schema: PATH-SCHEMA" in tool.activity_description(
+            tool.patch
+        )
