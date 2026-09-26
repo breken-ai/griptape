@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from griptape.artifacts import TextArtifact
+from griptape.artifacts import ImageArtifact, TextArtifact
 from griptape.drivers.vector import BaseVectorStoreDriver
 
 
@@ -25,6 +25,18 @@ class TestBaseVectorStoreDriver(ABC):
         driver.upsert(TextArtifact(id="foo2", value="foobar2"))
 
         assert len(driver.entries) == 2
+
+    def test_upsert_images_with_the_same_size(self, driver):
+        # Two different images whose format and byte size match.
+        red = ImageArtifact(value=b"red-pixels", format="png", width=1, height=1)
+        blue = ImageArtifact(value=b"bluepixels", format="png", width=1, height=1)
+
+        red_id = driver.upsert(red)
+        blue_id = driver.upsert(blue)
+
+        assert red_id != blue_id
+        assert len(driver.entries) == 2
+        assert driver.upsert(ImageArtifact(value=b"red-pixels", format="png", width=1, height=1)) == red_id
 
     def test_insert(self, driver):
         id1 = driver.insert(TextArtifact(value="foobar"))

@@ -126,7 +126,9 @@ class BaseVectorStoreDriver(SerializableMixin, FuturesExecutorMixin, ABC):
         meta = {} if meta is None else meta
 
         if vector_id is None:
-            value = artifact.to_text() if artifact.reference is None else artifact.to_text() + str(artifact.reference)
+            # An image's to_text() is only its format and size, so derive the ID from its bytes instead.
+            content = artifact.base64 if isinstance(artifact, ImageArtifact) else artifact.to_text()
+            value = content if artifact.reference is None else content + str(artifact.reference)
             vector_id = self._get_default_vector_id(value)
 
         meta = {**meta, "artifact": artifact.to_json()}
