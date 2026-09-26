@@ -2,6 +2,8 @@ import json
 from unittest.mock import Mock
 
 import pytest
+from cohere.core.unchecked_base_model import construct_type
+from cohere.types import StreamedChatResponseV2
 from schema import Schema
 
 from griptape.artifacts.action_artifact import ActionArtifact
@@ -196,7 +198,20 @@ class TestCoherePromptDriver:
                 Mock(type="tool-plan-delta", delta=Mock(message={"tool_plan": "tool-plan"})),
                 Mock(type="tool-call-start", delta=mock_tool_call_delta_header),
                 Mock(type="tool-call-delta", delta=mock_tool_call_delta_body),
-                Mock(type="stream-end", response=Mock(meta=Mock(tokens=Mock(input_tokens=5, output_tokens=10)))),
+                # ClientV2 ends a stream with message-end, which carries the usage; stream-end is the v1 event.
+                construct_type(
+                    type_=StreamedChatResponseV2,
+                    object_={
+                        "type": "message-end",
+                        "delta": {
+                            "finish_reason": "COMPLETE",
+                            "usage": {
+                                "billed_units": {"input_tokens": 1, "output_tokens": 10},
+                                "tokens": {"input_tokens": 5, "output_tokens": 10},
+                            },
+                        },
+                    },
+                ),
             ]
         )
 
@@ -390,6 +405,16 @@ class TestCoherePromptDriver:
         event = next(stream)
         assert event.usage.input_tokens == 5
         assert event.usage.output_tokens == 10
+
+    def test_stream_run_reports_usage(self, mock_stream_client):
+        prompt_stack = PromptStack()
+        prompt_stack.add_user_message("user-input")
+        driver = CoherePromptDriver(model="command", api_key="api-key", stream=True)
+
+        message = driver.run(prompt_stack)
+
+        assert message.usage.input_tokens == 5
+        assert message.usage.output_tokens == 10
 
     def test_to_dict(self):
         # Given

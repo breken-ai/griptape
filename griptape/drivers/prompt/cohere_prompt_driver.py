@@ -86,12 +86,13 @@ class CoherePromptDriver(BasePromptDriver):
         result: Iterator[StreamedChatResponseV2] = self.client.chat_stream(**params)
 
         for event in result:
-            if event.type == "stream-end":
-                usage = event.response.meta.tokens
+            if event.type == "message-end":
+                usage = event.delta.usage.tokens if event.delta and event.delta.usage else None
 
-                yield DeltaMessage(
-                    usage=DeltaMessage.Usage(input_tokens=usage.input_tokens, output_tokens=usage.output_tokens),
-                )
+                if usage is not None:
+                    yield DeltaMessage(
+                        usage=DeltaMessage.Usage(input_tokens=usage.input_tokens, output_tokens=usage.output_tokens),
+                    )
             elif event.type in ("tool-plan-delta", "content-delta", "tool-call-start", "tool-call-delta"):
                 yield DeltaMessage(content=self.__to_prompt_stack_delta_message_content(event))
 
