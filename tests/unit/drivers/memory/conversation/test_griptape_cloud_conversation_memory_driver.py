@@ -125,3 +125,26 @@ class TestGriptapeCloudConversationMemoryDriver:
         runs, metadata = driver.load()
         assert len(runs) == 1
         assert metadata == {"foo": "bar"}
+
+    def test_store_sends_metadata_where_load_reads_it(self, driver, mocker):
+        """UpdateThread takes `metadata` on the thread and on each message; load() reads both back from there."""
+        from griptape.artifacts import TextArtifact
+
+        request = mocker.patch("requests.request")
+        run = Run(id="run-1", meta={"rating": 5}, input=TextArtifact("hi"), output=TextArtifact("hello"))
+
+        driver.store([run], {"summary": "user said hi"})
+
+        method, url = request.call_args.args
+        assert method == "patch"
+        assert url.endswith("/api/threads/test")
+        assert request.call_args.kwargs["json"] == {
+            "messages": [
+                {
+                    "input": run.input.to_json(),
+                    "output": run.output.to_json(),
+                    "metadata": {"run_id": "run-1", "rating": 5},
+                }
+            ],
+            "metadata": {"summary": "user said hi"},
+        }

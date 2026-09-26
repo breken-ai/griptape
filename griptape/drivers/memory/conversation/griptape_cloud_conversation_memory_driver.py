@@ -91,23 +91,18 @@ class GriptapeCloudConversationMemoryDriver(BaseConversationMemoryDriver):
     def store(self, runs: list[Run], metadata: dict[str, Any]) -> None:
         # serialize the run artifacts to json strings
         messages = [
-            dict_merge(
-                {
-                    "input": run.input.to_json(),
-                    "output": run.output.to_json(),
-                    "metadata": {"run_id": run.id},
-                },
-                run.meta,
-            )
+            {
+                "input": run.input.to_json(),
+                "output": run.output.to_json(),
+                "metadata": dict_merge({"run_id": run.id}, run.meta),
+            }
             for run in runs
         ]
 
-        body = dict_merge(
-            {
-                "messages": messages,
-            },
-            metadata,
-        )
+        body = {
+            "messages": messages,
+            "metadata": metadata,
+        }
 
         # patch the Thread with the new messages and metadata
         # all old Messages are replaced with the new ones
