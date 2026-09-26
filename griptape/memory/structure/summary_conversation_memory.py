@@ -93,6 +93,13 @@ class SummaryConversationMemory(BaseConversationMemory):
             self.summary = self.summarize_runs(self.summary, runs_to_summarize)
             self.summary_index = 1 + self.runs.index(runs_to_summarize[-1])
 
+    def after_add_run(self) -> None:
+        # The base class drops the oldest runs past max_runs; shift summary_index so it still points
+        # at the first unsummarized run once they are gone.
+        if self.max_runs:
+            self.summary_index = max(0, self.summary_index - max(0, len(self.runs) - self.max_runs))
+        super().after_add_run()
+
     def summarize_runs(self, previous_summary: str | None, runs: list[Run]) -> str | None:
         try:
             if len(runs) > 0:

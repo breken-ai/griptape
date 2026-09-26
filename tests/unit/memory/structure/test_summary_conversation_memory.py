@@ -114,3 +114,19 @@ class TestSummaryConversationMemory:
         assert restored_memory.summary_index == 2
         assert restored_memory.meta["summary"] == "test summary"
         assert restored_memory.meta["summary_index"] == 2
+
+    def test_max_runs_keeps_the_latest_run_unsummarized(self, mocker):
+        memory = SummaryConversationMemory(offset=1, max_runs=2, prompt_driver=MockPromptDriver())
+        summarize_runs = mocker.spy(memory, "summarize_runs")
+
+        for i in range(1, 5):
+            memory.add_run(Run(input=TextArtifact(f"question {i}"), output=TextArtifact(f"answer {i}")))
+
+            # Pruning old runs must not drop the newest run from the prompt.
+            assert [run.input.value for run in memory.unsummarized_runs()] == [f"question {i}"]
+
+        # Every run but the newest was folded into the summary; none was skipped.
+        summarized = [run.input.value for call in summarize_runs.call_args_list for run in call.args[1]]
+        assert summarized == ["question 1", "question 2", "question 3"]
+        assert [run.input.value for run in memory.runs] == ["question 3", "question 4"]
+        assert memory.summary_index == 1
